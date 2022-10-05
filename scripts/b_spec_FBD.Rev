@@ -1,0 +1,260 @@
+################################################################################
+#
+# RevBayes script: A simple FBD analysis
+#
+# This file: Runs the full MCMC ...
+#
+# authors: Tracy A. Heath, Josh Justison, Joëlle Barido-Sottani, and Walker Pett
+#
+################################################################################
+
+#######################
+# Reading in the Data #
+#######################
+# Read the full list of taxa (including all fossils and extant species #
+taxa <- readTaxonData("data/Simulated_Fossil_Intervals_Thu_Sep_08_11-22-27_2022.tsv")
+# Import the morphological character matrix #
+# this file contains only the taxa for which morphological characters are available #
+morpho <- readDiscreteCharacterData("data/Simulated_Character_Data_Thu_Sep_08_11-22-27_2022.nex")
+
+## helpers
+n_taxa <- taxa.size()
+moves = VectorMoves()
+num_branches <- 2 * n_taxa - 2
+print("processed data")
+
+##########################################################################################
+# Joint Fossilized Birth-Death Process prior on the topology and fossil occurrence times #
+##########################################################################################
+
+### Specify a prior on the speciation and extinction rates
+rate_mean <- (n_taxa-2) / 10
+H = 0.587405
+NUM_RATE_CATEGORIES = 86
+
+### Create a lognormal distributed variable for the mean speciation rate
+speciation_mean ~ dnLoguniform( 1E-6, 1E2)
+speciation_mean.setValue( rate_mean )
+moves.append( mvScale(speciation_mean, lambda=1, tune=true, weight=2.0) )
+
+speciation_sd ~ dnExponential( 1.0 / H )
+moves.append( mvScale(speciation_sd, lambda=1, tune=true, weight=2.0) )
+
+### Create a deterministic variable for the speciation rate categories
+### using a discretized lognormal distribution (the N-quantiles of it)
+speciation := fnDiscretizeDistribution( dnLognormal(ln(speciation_mean), speciation_sd), NUM_RATE_CATEGORIES )
+
+extinction_rate ~ dnExponential(1)
+# Specify a scale move on the extinction_rate parameter #
+# This move will be applied with 3 different tuning values (lambda) to help improve mixing #
+moves.append( mvScale(extinction_rate, weight=1) )
+
+
+### Create a uniformly distributed variable for the category at the root
+rate_cat_probs <- simplex( rep(1, NUM_RATE_CATEGORIES) )
+
+
+# The FBD is conditioned on a starting time for the process, which is the origin time #
+# Specify a uniform prior on the origin #
+#origin_time ~ dnUnif(5, 7);
+origin_time ~ dnUnif(7, 9);
+
+# Specify a sliding-window move on the origin_time parameter #
+# This move will be applied with 3 different window widths (delta) to help improve mixing #
+moves.append( mvSlide(origin_time, weight=1.0) )
+
+
+# Assume an exponential prior on the rate of sampling fossils (psi) #
+psi ~ dnExponential(1)
+
+# Specify a scale move on the psi parameter #
+# This move will be applied with 3 different tuning values (lambda) to help improve mixing #
+moves.append( mvScale(psi, weight=1) );
+
+### rho is the probability of sampling species at the present
+### fix this to 367/367, since there are ~367 described species of primates
+### and we have sampled 367
+rho <- 0
+
+### Create a exponential distributed variable for the rate of rate-shift events
+event_rate ~ dnUniform(0.0, 10)
+moves.append( mvScale(event_rate, lambda=1, tune=true, weight=2.0) )
+
+
+### Create a uniformly distributed variable for the category at the root
+rate_cat_probs <- simplex( rep(1, NUM_RATE_CATEGORIES) )
+clado_matrix := fnCladogeneticSpeciationRateMatrix(6, speciation, 86)
+
+#### construct a variable for the tree drawn from a birth death process
+fbd_tree ~ dnCDBDP( rootAge           = origin_time,
+                    speciationRates   = speciation,
+                    psi               = psi,
+                    rho               = rho,
+                    Q                 = fnJC(NUM_RATE_CATEGORIES),
+                    delta             = event_rate,
+                    pi                = rate_cat_probs,
+                    condition         = "time" )
+
+s_t <- simStartingTree(taxa)
+fbd_tree.clamp(s_t)
+
+# Specify moves on the tree and node times #
+# These moves update the tree topology
+moves.append( mvFNPR(fbd_tree, weight=15.0) )
+moves.append( mvCollapseExpandFossilBranch(fbd_tree, origin_time, weight=6.0) )
+
+# These moves update the node ages #
+# Because we are conditioning on the origin time, we must also sample the root node age #
+moves.append( mvNodeTimeSlideUniform(fbd_tree, weight=40.0) )
+moves.append( mvRootTimeSlideUniform(fbd_tree, origin_time, weight=5.0) )
+
+
+### Use stratigraphic range data to explicitly sample the fossil occurence times ###
+# Use a for loop to create a uniform distribution on the occurence time for each fossil #
+# The boundaries of the uniform distribution are specified in the tsv file #
+fossils = fbd_tree.getFossils()
+for(i in 1:fossils.size())
+{
+    t[i] := tmrca(fbd_tree, clade(fossils[i]))
+
+    a_i = fossils[i].getMinAge()
+    b_i = fossils[i].getMaxAge()
+
+    F[i] ~ dnUniform(t[i] - b_i, t[i] - a_i)
+    F[i].clamp( 0 )
+}
+
+# Add a move to sample the fossil times #
+moves.append( mvFossilTimeSlideUniform(fbd_tree, origin_time, weight=5.0) )
+print("processed FBD")
+
+# For undated
+#br_len_lambda ~ dnExp(0.2)
+#moves.append( mvScale(br_len_lambda, weight=2) )
+
+# Define the tree parameter.
+# First, we generate the topology.
+# We assume a uniform prior on topology.
+#fbd_tree ~ dnUniformTopologyBranchLength(taxa, branchLengthDistribution=dnExponential(br_len_lambda))
+#moves.append( mvNNI(fbd_tree, weight=num_branches/2.0) )
+#moves.append( mvSPR(fbd_tree, weight=num_branches/10.0) )
+#moves.append( mvBranchLengthScale(fbd_tree, weight=num_branches) )
+
+
+# compute the tree length from the phylogeny
+#tree_length := fbd_tree.treeLength()
+
+###########################################
+# Binary morphological substitution model #
+###########################################
+#Create the Q matrix. These data are binary, so we initialize the Jukes-Cantor matrix with
+# two states
+# Specify the number of categories we would like to use to describe our data. For simplicity,
+# we will use 2, which generates in total 4 rate matrices because every matrix has its opposites.
+num_cats = 2
+
+#dir_alpha ~ dnExponential(1)
+#moves.append( mvScale(dir_alpha, lambda=1, weight=4.0 ))
+
+# Create a vector of how many different state frequencies we will need. We are working with
+# binary data and will only need two. If you were working with multistate data, you could
+# repeat the dir_alpha value for as many states as you need.
+
+sr <-abs(speciation_rate)
+pi_prior := v(sr, sr, sr)
+
+# Loop over the categories. For each category, draw state frequencies from a Dirichlet. Use
+# those state values to initialize the Q matrix.
+
+for (i in 1:num_cats) {
+  pi[i] ~ dnDirichlet(pi_prior)
+  freq_zero[i] := pi[i][1]
+  freq_one[i]  := pi[i][2]
+  freq_two[i]  := pi[i][3]
+  moves.append( mvBetaSimplex(pi[i], alpha=10, weight=4.0) )
+
+    # now also set up the opposite rate matrix
+  pi[num_cats+i] := simplex(freq_one[i] , freq_zero[i], freq_two[i])
+
+  Q_morpho[i] := fnF81(pi[i])
+  Q_morpho[num_cats+i] := fnF81(pi[num_cats+i])
+}
+print("processed matrices")
+
+
+# Tell the model what the probability of a character going into any particular category.
+matrix_probs <- simplex( rep(1,2*num_cats) )
+#Set up Gamma-distributed rate variation.
+alpha_morpho ~ dnExponential( 1.0 )
+rates_morpho := fnDiscretizeGamma( alpha_morpho, alpha_morpho, 4 )
+
+#Moves on the parameters to the Gamma distribution.
+moves.append( mvScale(alpha_morpho, weight=5.0) )
+
+# We assume a strict morphological clock rate, drawn from an exponential prior #
+#clock_morpho ~ dnExponential(1.0)
+#moves.append( mvScale(clock_morpho, weight=4.0) )
+
+ucln_mean ~ dnExponential(2.0)
+### we will also estimate the standard deviation of the lognormal (ucln_sigma) with an exponential hyperprior
+ucln_sigma ~ dnExponential(3.0)
+### we can create deterministic nodes for the variance and mu of the lognormal
+ucln_var := ucln_sigma * ucln_sigma
+ucln_mu := ln(ucln_mean) - (ucln_var * 0.5)
+### both the ucln_mean and ucln_sigma will be operated on by scale moves
+moves.append(mvScale(ucln_mean, lambda=1.0, tune=true, weight=4.0))
+moves.append(mvScale(ucln_sigma, lambda=0.5, tune=true, weight=4.0))
+
+### now we will create a vector of stochastic nodes
+### each element in the vector represents a branch rate
+### the indices of the vector correspond to branch indices in the tree
+### using a for-lop initialize the branch rates and assign a move to each one
+n_branches <- fbd_tree.ntips()*2 - 2
+
+for(i in 1:n_branches){
+    branch_rates[i] ~ dnLnorm(ucln_mu, ucln_sigma)
+    moves.append(mvScale(branch_rates[i],lambda=1.0,tune=true,weight=2.0))
+}
+### add 2 more moves on the branch rate vector
+moves.append(mvVectorScale(branch_rates,lambda=1.0,tune=true,weight=2.0))
+moves.append(mvVectorSingleElementScale(branch_rates,lambda=30.0,tune=true,weight=1.0))
+
+### a helpful parameter to monitor
+mean_rt := mean(branch_rates)
+
+
+### Create the substitution model and clamp with our observed Standard data ###
+# Here we use the option siteMatrices=true specify that the vector Q #
+# represents a site-specific mixture of rate matrices #
+# We also condition on observing only variable characters using coding="variable" #
+phyMorpho ~ dnPhyloCTMC(tree=fbd_tree, siteRates=rates_morpho, branchRates=branch_rates, Q=Q_morpho, type="Standard", coding="variable", siteMatrices=matrix_probs)
+phyMorpho.clamp(morpho)
+
+
+########
+# MCMC #
+########
+
+# initialize the model object #
+mymodel = model(fbd_tree)
+
+monitors = VectorMonitors()
+
+# Create a vector of monitors #
+# 1. for the full model #
+monitors.append( mnModel(filename="output/B_spec_dated.log", printgen=100, exclude = ["F"]) )
+
+# 2. the tree #
+monitors.append( mnFile(filename="output/B_spec_dated.trees", printgen=100, fbd_tree) )
+
+# 3. and a few select parameters to be printed to the screen #
+monitors.append( mnScreen(printgen=100) )
+
+# Initialize the MCMC object #
+mymcmc = mcmc(mymodel, monitors, moves)
+
+# Run the MCMC #
+mymcmc.run(generations=100000)
+
+# Quit RevBayes #
+q()
