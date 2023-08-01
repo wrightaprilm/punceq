@@ -1,0 +1,84 @@
+
+fromTrace = FALSE
+
+### This director needs three subdirectories (folders):
+#     scripts/ (additional RevBayes routines that will be used)
+#     data/ (holds data matrices & taxonomic information)
+#     output/ (where trees & logs will be sent)
+source("scripts/standard_routines/Milgram_Default_Settings.Rev");
+
+###############################################################################
+#                  Get basic information about the clade                   #
+# This is (these are) the nexus file(s) that you are using for this analysis  #
+#     Make sure that filenames & directories are correct!!!
+###############################################################################
+analysis_name <- "Strophomenida";
+model_file_name = "scripts/pps_"+analysis_name+"_Model.Rev"
+
+data <- readDiscreteCharacterData(inFile)
+timeline_precision <- 0.05;
+#taxa <- readTaxonData("data/Strophomenida_fossil_intervals.tsv");
+taxa <- readTaxonData("data/Strophomenida_fossil_intervals_w_outgroup.tsv");
+otus <- taxa.size();
+n_taxa <- taxa.size();
+n_branches <- (2 * otus) - 2;
+
+
+max_max_age <- taxa[1].getMaxAge();
+for (i in 2:otus) if (max_max_age < taxa[i].getMaxAge())   max_max_age <- taxa[i].getMaxAge();
+if (round(max_max_age)<max_max_age) {
+  max_max_age <- 1+round(max_max_age);
+  } else {
+  max_max_age <- round(max_max_age);
+  }
+origin_time ~ dnUnif(max_max_age,max_max_age*2);  # Specify a uniform prior on the origin #
+
+
+###############################################################################
+#                  Setup parameters for the analyses                   #
+#     Again, make sure that filenames & directories are correct!!!
+###############################################################################
+clock_model <- "strict";		# enter "strict" for strict clock, "uncorrelated" for relaxed clock with lognormal; "autocorrelated" for autocorrelated with lognormal shifts
+among_char_var <- "lognormal";	# enter "gamma" or "lognormal"continuous <- TRUE;
+punctuated <- FALSE;
+if (punctuated) {
+  pr_pe <- 1;   # prob. of speciation event 'initiating' cladistic branch
+  } else {
+  pr_pe <- 0;
+  }
+
+outgroup=clade("Sowerbyites");
+ingroup=clade("Strophomena","Keilamena","Tetraphalerella","Actinomena","Holtedahlina","Longvillia","Leigerina","Pseudostrophomena","Furcitella","Bekkerina","Bellimurina","Biparetis","Dactylogonia","Geniculina","Katastrophomena","Chunanomena","Luhaia","Molongcola","Murinella","Oepikina","Quondongia","Crassoseptaria","Haljalanites","Colaptomena","Kjerulfina","Rafinesquina","Megamyonia","Rhipidomena","Kjaerina","Septomena","Leptaena","Kiaeromena","Bekkeromena","Glyptomena","Paromalomena","Platymena","Resupinsculpta");
+timeline <- v(1.25,5.45,8.8,14.25,17.65,25.45,27.3,29.55,33.15,38.45,42.9);
+seed_origination <- v(0.334,0.2059,0.2616,0.6103,0.6431,0.7389,0.1055,0.7797,0.3966,0.3999,0.2567,0.2468);
+seed_sampling <- v(0.4763,0.5701,0.3794,0.6824,0.877,0.5102,0.5328,0.6018,0.5829,0.6313,0.6389,0.7845);
+seed_sampling_lb <- v(0.0956,0.1102,0.0597,0.1631,0.3483,0.2427,0.0642,0.1815,0.1155,0.1954,0.1765,0.2979);
+seed_sampling_ub <- v(0.2647,0.3252,0.1608,0.5068,0.9199,0.4737,0.1851,0.3943,0.2732,0.4245,0.3631,0.8233);
+nbins <- seed_sampling.size();
+rho <- 0.3789;
+
+
+source("scripts/FBD_scripts/Milgram_Skyline_N_Interval.Rev");
+fbd_tree
+
+############################################################################
+# Set up appropriate Q-matrices for the partitions
+#   as well as the among-character and among-branch
+#   rate variation models
+#  (Again, make sure that the directory is OK)
+############################################################################
+n_data_subsets <- 3
+filenames <- v("PPS_output/posterior_predictive_sim_5/phyMorpho[1].nex", "PPS_output/posterior_predictive_sim_5/phyMorpho[2].nex", "PPS_output/posterior_predictive_sim_5/phyMorpho[3].nex")
+partition_states <- v(2,3,4);
+partition_ordering <- v("unordered","unordered","unordered");
+coding_bias <- v("variable","variable","variable");	
+
+source("scripts/standard_routines/Accersi_Parameters_for_Analysis_Partitioned_by_States_and_Ordering_and_Class.Rev");
+
+
+
+
+############################################################################
+# Wrap it all into your model
+############################################################################
+mymodel = model(fbd_tree);	

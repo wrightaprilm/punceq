@@ -1,0 +1,53 @@
+---
+title: "PlottingSpecs"
+author: "April Wright"
+date: "2022-09-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load in Data, including true simulation values.
+
+```{r}
+library(tidyverse)
+library(reshape2)
+#true_val <- read_csv("../data/Evolutionary_History_Tue_Sep_13_14-03-55_2022.csv")
+true_val <- read_csv("../data/Origination_rates_from_Congreve_et_al_2021.csv")
+#col_names <- names(read_csv("../output/Simulated_moves_Dated.log", n_max = 0))
+mcmc_log <- read_delim("~/projects/Cinctans/output/Strophomenida_lognormal_char_variation_+_strict_clock_+_gradual_change_12_bin_skyline.log",delim  = "\t")
+#mcmc_log <- read_delim("../output/Simulated_moves_Dated.log",delim  = "\t")
+
+spec_vals_empirical <- unique(true_val$origination_rate_at_birth)
+
+specs <- mcmc_log %>%
+  select(starts_with("speciation_rate"))
+data_mod <- melt(specs)
+
+```
+
+Now calculate HPDs from MCMC logs:
+
+```{r}
+library(coda)
+melded <-data_mod %>%
+  group_by(variable) %>%
+  summarize(hpd = HPDinterval(as.mcmc(value)),
+            mean = mean(value)) %>%
+  mutate(empirical = spec_vals_empirical[-1])
+```
+
+
+Now plot coverage probability of simulation values within HPD
+```{r}
+ggplot(melded, aes(x=variable, y=empirical)) + geom_point() + 
+geom_errorbar(aes(ymin=hpd[,1], ymax=hpd[,2]), width=.2, position=position_dodge(.9))  + theme_bw() + xlab("Rate Bin") + ylab("Speciation Rate") + theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 45, hjust=1)) 
+```
+
+Now plot coverage probability of non-FBD values within HPD
+```{r}
+ggplot(melded, aes(x=variable, y=mean)) + geom_point() + 
+geom_errorbar(aes(ymin=hpd[,1], ymax=hpd[,2]), width=.2, position=position_dodge(.9))  + theme_bw() + xlab("Rate Bin") + ylab("Speciation Rate") + theme(axis.text.x = element_text(colour = "grey20", size = 10, angle = 45, hjust=1)) 
+```
