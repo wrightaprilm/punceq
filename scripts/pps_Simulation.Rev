@@ -15,4 +15,4 @@ trace = readStochasticVariableTrace("output_" + model_name + "/" + analysis_name
 pps = posteriorPredictiveSimulation(mymodel, directory="output_" + model_name + "/" + analysis_name + "_post_sims", trace)
 
 # "Running the posterior predictive simulation"
-pps.run(thinning=2)
+pps.run(thinning=400)
