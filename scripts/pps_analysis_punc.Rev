@@ -16,7 +16,7 @@ clear()
 ## POSTERIOR PREDICTIVE DATA SIMULATION
 analysis_name = "punc_eq"
 model_name = "punc"
-model_file_name = "scripts/pps_"+model_name+"_Model.Rev"
+model_file_name = "scripts/Strophomenida_MCMC_Strict_Lognormal_Skylined.Rev"
 source("scripts/pps_Simulation.Rev")
 clear()
 

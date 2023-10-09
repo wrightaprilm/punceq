@@ -56,12 +56,8 @@ for (nds in 1:n_data_subsets)  {
   golem[nds] <- readDiscreteCharacterData(filenames[nds]);
 
   # set up transition matrices
-  if (partition_ordering[nds]=="ordered")  {
-    source("scripts/Accio_Mk_Ordered_k_State_Character.Rev");
-    Q[nds]:=Qo;  # Qo is "ordered" Q-matrix
-    } else  {
+    nsites = golem[nds].size()
     Q[nds]:=fnJC(partition_states[nds]);
-    }
 
   # set up appropriate rates
   if (ttl_rate_partitions>1)  {
@@ -89,6 +85,11 @@ for (nds in 1:n_data_subsets)  {
   # attach appropriate rate variation for branches given character class.
 #  phyMorpho[nds] ~ dnPhyloCTMC(tree=tau,Q=Q[nds],nSites=partition_chars[nds],siteRates=char_rate_var[nds],branchRates=ind_branch_rates[nds],type="Standard",coding=coding_bias[nds]);
 #  phyMorpho[nds] ~ dnPhyloCTMC(tree=fbd_tree,Q=Q_morpho,siteRates=rates_morpho, branchRates=branch_rates, type="Standard", coding="variable", rootFrequencies = root_state)
-  phyMorpho[nds] ~ dnPhyloCTMC(tree=fbd_tree,Q=Q[nds],siteRates=char_rate_var[nds],branchRates=ind_branch_rates[nds],type="Standard",coding=coding_bias[nds]);
+  
+  phyMorpho[nds] ~ dnPhyloCTMC(tree=fbd_tree,Q=Q[nds],siteRates=char_rate_var[nds],branchRates=ind_branch_rates[nds],type="Standard",coding=coding_bias[nds], nSites=nsites);
+  for (y in 1:1000){
+  filename = "output_punc/Strophomenida_post_sims/posterior_predictive_sim_" + y + "/phyMorpho[" + nds + "].nex"
+  writeNexus(filename=filename, phyMorpho[nds])
+  }
   phyMorpho[nds].clamp(golem[nds]);
   }

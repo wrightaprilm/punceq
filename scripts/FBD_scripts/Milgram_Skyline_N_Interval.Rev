@@ -28,22 +28,16 @@ for (bn in 1:nbins)  {
 #  extinction_rate]bn]:= turnover[bn] * speciation_rate[bn];
 #  diversification[bn] := speciation_rate[bn] - extinction_rate[bn];
   }
-
+origin_time ~ dnUnif(30,35)
 # Establish Basal Divergence Time
 moves.append(mvSlide(origin_time, delta=0.01, weight=5));
 moves.append(mvSlide(origin_time, delta=0.10, weight=3));
 moves.append(mvSlide(origin_time, delta=1.00, weight=1));
+ingroup=clade("Strophomena","Keilamena","Tetraphalerella","Actinomena","Holtedahlina","Longvillia","Leigerina","Pseudostrophomena","Furcitella","Bekkerina","Bellimurina","Biparetis","Dactylogonia","Geniculina","Katastrophomena","Chunanomena","Luhaia","Molongcola","Murinella","Oepikina","Quondongia","Crassoseptaria","Haljalanites","Colaptomena","Kjerulfina","Rafinesquina","Megamyonia","Rhipidomena","Kjaerina","Septomena","Leptaena","Kiaeromena","Bekkeromena","Glyptomena","Paromalomena","Platymena","Resupinsculpta");
 
-if (use_constraint_tree || ingroup.size()>1)  {
-  fbd_dist = dnBirthDeathSamplingTreatment(originAge=origin_time, lambda=speciation_rate, mu=extinction_rate, psi=psi, rho=rho, timeline=timeline, taxa=taxa, condition = "sampling");
-  if (ingroup.size()>1) {
-    constraints <- v(ingroup);
-#    fbd_tree ~ dnConstrainedTopology(fbd_dist, constraints=v(ingroup));
-    fbd_tree ~ dnConstrainedTopology(fbd_dist);
-    }
-  } else {
-  fbd_tree ~ dnBirthDeathSamplingTreatment(originAge=origin_time, lambda=speciation_rate, mu=extinction_rate, psi=psi, rho=rho, timeline=timeline, taxa=taxa, condition = "sampling");
-  }
+fbd_dist = dnFBDP(originAge=origin_time, lambda=speciation_rate, mu=extinction_rate, psi=psi, rho=rho, timeline=timeline, taxa=taxa, condition="sampling")
+fbd_tree ~ dnConstrainedTopology(fbd_dist)
+
 #fbd_dist = dnBDSTP(originAge=origin_time, lambda=fbd_p, mu=fbd_q, psi=fbd_r, rho=rho, timeline=timeline, taxa=taxa);
 moves.append(mvFNPR(fbd_tree, weight=n_branches/2));                              # time-tree pruning & grafting
 moves.append(mvNNI(fbd_tree, weight=n_branches/2));                               # nearest-neighbor interchanges
