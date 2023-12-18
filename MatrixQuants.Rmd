@@ -1,0 +1,73 @@
+---
+title: "MatrixCalculation.Rmd"
+author: "April Wright"
+date: "2023-12-18"
+output: html_document
+---
+
+We're going to work through comparing the simulated Mk matrices to the empirical, then the simulated punc to the empirical punc. First, I will walk through the reading of data and the general functions so that this is clear, then we'll vectorize the code to operate across a fuckton of simulations.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval=TRUE)
+library(Revticulate)
+knitRev()
+```
+
+First, read in a matrix. I'm doing this in Revticulate because RevBayes makes concatenation easier than R. 
+
+```{rb}
+data <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[1].nex")
+data1 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[2].nex")
+data2 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[3].nex")
+
+data_final <- concatenate(data, data1)
+data_final <- concatenate(data_final, data2)
+writeNexus(data_final, "test")
+```
+
+Now we'll load it in R:
+
+```{r}
+data <- ape::read.nexus.data("test")
+```
+
+We want to look at five different metrics for evaluating the simularity of matrices:
+
++ Simple pairwise disparity
++ Gower's 
++ Consistency
++ Retention
++ MP score
+
+Down the row we go.
+
+## Simple Pairwise Disparity
+
+```{r}
+Claddis::calculate_morphological_distances(data, distance_metric = "red")
+
+```
+
+## Gower's 
+```{r}
+Claddis::calculate_morphological_distances(data, distance_metric = "gc")
+```
+
+## Consistency and Retention Indices
+
+```{r}
+phydata <- read.phyDat("test", format = "nexus", type = "STANDARD")
+mcc <- read.nexus("Mk_output/mcc.tre")
+phangorn::CI(data=phydata, mcc)
+phangorn::RI(data=phydata, mcc)
+```
+
+## MP Score
+
+```{r}
+phangorn::fitch(tree = mcc, data = phydata, site = "pscore")
+#or
+#phangorn::sankoff(tree = mcc, data = phydata, site = "pscore")
+```
+
+
