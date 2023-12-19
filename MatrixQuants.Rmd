@@ -19,18 +19,10 @@ First, read in a matrix. I'm doing this in Revticulate because RevBayes makes co
 data <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[3].nex")
 data1 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[2].nex")
 data2 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[1].nex")
-
 data_final <- concatenate(data, data1)
 data_final <- concatenate(data_final, data2)
 writeNexus(data_final, "test")
 ```
-
-Now we'll load it in R:
-
-```{r}
-data <- ape::read.nexus.data("test")
-```
-
 We want to look at five different metrics for evaluating the simularity of matrices:
 
 + Simple pairwise disparity
@@ -43,31 +35,131 @@ Down the row we go.
 
 ## Simple Pairwise Disparity
 
-```{r}
-Claddis::calculate_morphological_distances(data, distance_metric = "red")
+Claddis is funny about format, so we'll need to do a few things to make the matrix work with it.
 
+```{r}
+
+data_manufacture <- function(data){
+  ass_block <- "
+  BEGIN ASSUMPTIONS;
+	  OPTIONS  DEFTYPE=unord PolyTcount=MINSTEPS ;
+	  TYPESET * UNTITLED  = unord: 1-63;
+  END;"
+
+  data <- read_file(data)
+  data <- toupper(data)
+  full <- capture.output(cat(data, ass_block))
+  write(full,  "new_test.nex")
+  claddis_formatted_data <- Claddis::read_nexus_matrix("new_test.nex")
+return(claddis_formatted_data)
+  }
+
+```
+
+```{r}
+simple <- function(claddis_formatted_data){
+  simple_parwise <- Claddis::calculate_morphological_distances(claddis_formatted_data, distance_metric = "red")
+
+  simple_df <- as.data.frame(simple_parwise)
+  simple_summary <- simple_df %>% 
+    summarise_all(mean)
+  mean_simple <- mean(unlist(simple_summary[-1]))
+  return(mean_simple)
+}
 ```
 
 ## Gower's 
 ```{r}
-Claddis::calculate_morphological_distances(data, distance_metric = "gc")
+gower <- function(claddis_formatted_data){
+
+  gowers <- Claddis::calculate_morphological_distances(claddis_formatted_data, distance_metric = "gc")
+
+  gowersdf <- as.data.frame(gowers)
+  gowers_summary <- gowersdf %>% 
+    summarise_all(mean)
+
+  mean_gowers <- mean(unlist(gowers_summary[-1]))
+}
 ```
 
 ## Consistency and Retention Indices
 
 ```{r}
-phydata <- read.phyDat("test", format = "nexus", type = "STANDARD")
-mcc <- read.nexus("Mk_output/mcc.tre")
-phangorn::CI(data=phydata, mcc)
-phangorn::RI(data=phydata, mcc)
+ci <- function(phyData, mcc){
+  ci <- phangorn::CI(data=phydata, mcc)
+  return(ci)
+}
+```
+
+```{r}
+ri <- function(phyData, mcc){
+  ri <- phangorn::RI(data=phydata, mcc)
+  return(ri)
+
+}
 ```
 
 ## MP Score
 
 ```{r}
-phangorn::fitch(tree = mcc, data = phydata, site = "pscore")
-#or
-#phangorn::sankoff(tree = mcc, data = phydata, site = "pscore")
+mp <- function(phyData, mcc){
+  pars <- phangorn::fitch(tree = mcc, data = phydata, site = "pscore")
+  return(pars)
+}
+
 ```
 
+## Automation across multiple sets
 
+Let's allocate vectors for our output
+```{r}
+simple_pairwise <- c()
+gowers <- c()
+const <- c()
+ret <- c()
+mpars_list <- c()
+```
+
+Now, we do all the shit, append the results to vector and make a dataframe.
+
+```{r include=FALSE}
+dir_list <- list.dirs("PPS_output/")
+dir_list <- dir_list[ grepl("post*", dir_list) ]
+dir_list <- dir_list[2:102]
+for (x in dir_list){
+  spl <- strsplit(x, "_")[[1]][5]
+  print(spl)
+  file1 <- paste0(x, "/phyMorpho[3].nex")
+  file2 <- paste0(x, "/phyMorpho[2].nex")
+  file3 <- paste0(x, "/phyMorpho[1].nex")
+  file.copy(from = file1,
+  to   = ".")
+  file.copy(from = file2,
+  to   = ".")
+  file.copy(from = file3,
+  to   = ".")
+  nex_file <- paste0("test", spl, ".nex")
+  system("~/software/rb RevFormat.Rev")
+  file.copy(from = "test", to = nex_file)
+  data_manufacture(nex_file)
+  sdis <- suppressWarnings(simple(claddis_formatted_data))
+  simple_pairwise <- c(simple_pairwise, sdis)
+  gos_dis <- suppressWarnings(gower(claddis_formatted_data))
+  gowers <- c(gowers, gos_dis)
+  phydata <- read.phyDat(nex_file, format = "nexus", type = "STANDARD")
+  mcc <- read.nexus("Mk_output/mcc.tre")
+  cons <- ci(phyData, mcc)
+  const <- c(const, cons)
+  rent <- ri(phyData, mcc)
+  ret <- c(rent, ret)
+  mp_Score <- mp(phyData, mcc)
+  mpars_list <- c(mpars_list, mp_Score)
+}
+```
+
+Now, populate a data frame with all of these values, and export it.
+
+```{r}
+df <- cbind(simple_pairwise, gowers, const, ret, mpars_list)
+write.csv(df, "pps_mk.csv")
+```

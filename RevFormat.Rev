@@ -1,0 +1,7 @@
+data <- readDiscreteCharacterData("phyMorpho[3].nex")
+        data1 <- readDiscreteCharacterData("phyMorpho[2].nex")
+        data2 <- readDiscreteCharacterData("phyMorpho[1].nex")
+        data_final <- concatenate(data, data1)
+        data_final <- concatenate(data_final, data2)
+        writeNexus(data_final, "test")
+q()
