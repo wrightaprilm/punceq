@@ -13,12 +13,12 @@ library(Revticulate)
 knitRev()
 ```
 
-First, read in a matrix. I'm doing this in Revticulate because RevBayes makes concatenation easier than R. 
+First, read in a matrix. I'm doing this in Revticulate because RevBayes makes concatenation easier than R. We read in the matrix with the most states first so the state space initializes correctly (0-1-2-3).
 
 ```{rb}
-data <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[1].nex")
+data <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[3].nex")
 data1 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[2].nex")
-data2 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[3].nex")
+data2 <- readDiscreteCharacterData("PPS_output/posterior_predictive_sim_1/phyMorpho[1].nex")
 
 data_final <- concatenate(data, data1)
 data_final <- concatenate(data_final, data2)
